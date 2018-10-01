@@ -1,0 +1,761 @@
+<?php
+class mdl_report extends CI_Model{ 
+		
+	function __construct(){
+		parent::__construct();
+	} 
+
+	function dash_nilai(){
+		$this->db->select('uj_total_nilai_final');
+		$this->db->from('iapi_ujian');
+		$this->db->where("uj_is_approve",1);
+		
+		$periode_min_1 = mDate(get_current_periode(),"-3 month");
+		$this->db->where("( uj_test_start_date >= '".$periode_min_1." 01:00:00' AND uj_test_start_date < '".get_current_periode()." 23:59:00' )");
+
+		return $this->db->get()->result();
+	}
+
+	function batas_lulus($p=array(),$count=FALSE){
+
+		$total = 0;
+		$this->db->from('iapi_history_jumlah');
+		
+		if(isset($p['ujian_type']) && trim($p['ujian_type'])!="" && trim($p['ujian_type'])!='all' && trim($p['ujian_type'])!=0){
+			$this->db->where("hj_ujian_type",$p['ujian_type']);
+		}
+
+		if(isset($p['ujian_tahun']) && trim($p['ujian_tahun'])!="" && trim($p['ujian_tahun'])!='all' && trim($p['ujian_tahun'])!=0){
+			$this->db->where("hj_tahun",$p['ujian_tahun']);
+		}
+ 
+		if(isset($p['ujian_periode']) && trim($p['ujian_periode'])!="" && trim($p['ujian_periode'])!='all' && trim($p['ujian_periode'])!=0){
+			$this->db->where("hj_periode",$p['ujian_periode']);
+		}
+
+		
+		/* dont modified */
+		if($count==FALSE){
+			if( isset($p['offset']) && isset($p['limit']) ){
+				$p['offset'] = empty($p['offset'])?0:$p['offset'];
+				$this->db->limit($p['limit'],$p['offset']);
+			}
+		}
+
+		if(trim($this->jCfg['search']['order_by'])!=""){
+			$this->db->order_by($this->jCfg['search']['order_by'],$this->jCfg['search']['order_dir']);
+		}
+		
+		$qry = $this->db->get();
+		if($count==FALSE){
+			$total = $this->batas_lulus($p,TRUE);
+			return array(
+					"data"	=> $qry->result(),
+					"total" => $total
+				);
+		}else{
+			return $qry->num_rows();
+		}
+
+	}
+
+	function nilai($p=array(),$count=FALSE){
+		
+		$total = 0;
+		$this->db->from('iapi_ujian');
+		
+		if(isset($p['ujian_type']) && trim($p['ujian_type'])!="" && trim($p['ujian_type'])!=0){
+			$this->db->where("uj_test_series_id",$p['ujian_type']);
+		}
+
+		if(trim($this->jCfg['search']['is_cur_periode'])==1){
+			$this->db->where("uj_test_start_date >=",get_current_periode());
+		}
+
+		$this->db->where_in('uj_record_type',array('test','no-show','old'));
+
+		if(trim($this->jCfg['search']['is_approve'])==1){
+			$this->db->where("uj_is_approve",1);
+		}elseif(trim($this->jCfg['search']['is_approve'])==0){
+			$this->db->where("uj_is_approve",0);
+		}
+
+		if( isset($p['is_ready_send']) ){
+			//$this->db->where("uj_approve_account",1);
+			$this->db->where("uj_is_sent",0);
+		}
+
+		if( isset($p['is_ready_publish']) ){
+			$this->db->where("uj_is_verified",1);
+		}
+
+		if(trim($this->jCfg['search']['status'])=="LULUS"){
+			$this->db->where("uj_total_nilai_final >=",75);
+		}elseif(trim($this->jCfg['search']['status'])=="TIDAK"){
+			$this->db->where("uj_total_nilai_final <",75);
+		}
+		
+		/* where or like conditions */
+		if( trim($this->jCfg['search']['date_start'])!="" && trim($this->jCfg['search']['date_end']) != "" ){
+			$this->db->where("( uj_test_start_date >= '".$this->jCfg['search']['date_start']." 01:00:00' AND uj_test_start_date <= '".$this->jCfg['search']['date_end']." 23:59:00' )");
+		}
+
+		// dont modified....
+		if( trim($this->jCfg['search']['colum'])=="" && trim($this->jCfg['search']['keyword']) != "" ){
+			$str_like = "( ";
+			$i=0;
+			foreach ($p['param'] as $key => $value) {
+				if($key != ""){
+					$str_like .= $i!=0?"OR":"";
+					$str_like .=" ".$key." LIKE '%".$this->jCfg['search']['keyword']."%' ";			
+					$i++;
+				}
+			}
+			$str_like .= " ) ";
+			$this->db->where($str_like);
+		}
+
+		if( trim($this->jCfg['search']['colum'])!="" && trim($this->jCfg['search']['keyword']) != "" ){
+			$this->db->like($this->jCfg['search']['colum'],$this->jCfg['search']['keyword']);
+		}
+
+
+		
+		if($count==FALSE){
+			if( isset($p['offset']) && isset($p['limit']) ){
+				$p['offset'] = empty($p['offset'])?0:$p['offset'];
+				$this->db->limit($p['limit'],$p['offset']);
+			}
+		}
+
+		if(trim($this->jCfg['search']['order_by'])!=""){
+			$this->db->order_by($this->jCfg['search']['order_by'],$this->jCfg['search']['order_dir']);
+			$this->db->order_by("uj_test_start_date","DESC");
+		}
+		
+		$qry = $this->db->get();
+		if($count==FALSE){
+			$total = $this->nilai($p,TRUE);
+			return array(
+					"data"	=> $qry->result(),
+					"total" => $total
+				);
+		}else{
+			return $qry->num_rows();
+		}
+	}
+
+	function approval($p=array(),$count=FALSE){
+		
+		$total = 0;
+		$this->db->from('iapi_ujian');
+		
+		if(isset($p['ujian_type']) && trim($p['ujian_type'])!="" && trim($p['ujian_type'])!=0){
+			$this->db->where("uj_test_series_id",$p['ujian_type']);
+		}
+
+		if(trim($this->jCfg['search']['is_cur_periode'])==1){
+			$this->db->where("uj_test_start_date >=",get_current_periode());
+		}
+
+		$this->db->where_in('uj_record_type',array('test','no-show'));
+
+		if(trim($this->jCfg['search']['is_approve'])==1){
+			$this->db->where("uj_is_approve",1);
+		}elseif(trim($this->jCfg['search']['is_approve'])==0){
+			$this->db->where("uj_is_approve",0);
+		}
+
+		if(trim($this->jCfg['search']['status'])=="LULUS"){
+			$this->db->where("uj_total_nilai_final >=",75);
+		}elseif(trim($this->jCfg['search']['status'])=="TIDAK"){
+			$this->db->where("uj_total_nilai_final <",75);
+		}
+		
+		/* where or like conditions */
+		if( trim($this->jCfg['search']['date_start'])!="" && trim($this->jCfg['search']['date_end']) != "" ){
+			$this->db->where("( uj_test_start_date >= '".$this->jCfg['search']['date_start']." 01:00:00' AND uj_test_start_date <= '".$this->jCfg['search']['date_end']." 23:59:00' )");
+		}
+
+		// dont modified....
+		if( trim($this->jCfg['search']['colum'])=="" && trim($this->jCfg['search']['keyword']) != "" ){
+			$str_like = "( ";
+			$i=0;
+			foreach ($p['param'] as $key => $value) {
+				if($key != ""){
+					$str_like .= $i!=0?"OR":"";
+					$str_like .=" ".$key." LIKE '%".$this->jCfg['search']['keyword']."%' ";			
+					$i++;
+				}
+			}
+			$str_like .= " ) ";
+			$this->db->where($str_like);
+		}
+
+		if( trim($this->jCfg['search']['colum'])!="" && trim($this->jCfg['search']['keyword']) != "" ){
+			$this->db->like($this->jCfg['search']['colum'],$this->jCfg['search']['keyword']);
+		}
+
+
+		
+		if($count==FALSE){
+			if( isset($p['offset']) && isset($p['limit']) ){
+				$p['offset'] = empty($p['offset'])?0:$p['offset'];
+				$this->db->limit($p['limit'],$p['offset']);
+			}
+		}
+
+		if(trim($this->jCfg['search']['order_by'])!=""){
+			$this->db->order_by($this->jCfg['search']['order_by'],$this->jCfg['search']['order_dir']);
+			$this->db->order_by("uj_test_start_date","DESC");
+		}
+		
+		$qry = $this->db->get();
+		if($count==FALSE){
+			$total = $this->approval($p,TRUE);
+			return array(
+					"data"	=> $qry->result(),
+					"total" => $total
+				);
+		}else{
+			return $qry->num_rows();
+		}
+	}
+
+
+	function tabulasi($p=array(),$count=FALSE){
+		
+		$total = 0;
+		$this->db->from('iapi_ujian');
+		$this->db->select("
+				iapi_ujian.uj_test_series_id,
+				iapi_detail_section.ds_item_name
+				");
+		$this->db->join("iapi_detail_section","iapi_detail_section.ds_reg_number=iapi_ujian.uj_reg_number");
+		
+		if(isset($p['ujian_type']) && trim($p['ujian_type'])!="" && trim($p['ujian_type'])!=0){
+			$this->db->where("iapi_ujian.uj_test_series_id",$p['ujian_type']);
+		}
+
+		if(trim($this->jCfg['search']['is_cur_periode'])==1){
+			$this->db->where("iapi_ujian.uj_test_start_date >=",get_current_periode());
+		}
+		$this->db->where('iapi_detail_section.ds_response !=','');
+		$this->db->where('iapi_ujian.uj_record_type','test');
+
+		/* where or like conditions */
+		if( trim($this->jCfg['search']['date_start'])!="" && trim($this->jCfg['search']['date_end']) != "" ){
+			$this->db->where("( iapi_ujian.uj_test_start_date >= '".$this->jCfg['search']['date_start']." 01:00:00' AND iapi_ujian.uj_test_start_date <= '".$this->jCfg['search']['date_end']." 23:59:00' )");
+		}
+
+		// dont modified....
+		if( trim($this->jCfg['search']['colum'])=="" && trim($this->jCfg['search']['keyword']) != "" ){
+			$str_like = "( ";
+			$i=0;
+			foreach ($p['param'] as $key => $value) {
+				if($key != ""){
+					$str_like .= $i!=0?"OR":"";
+					$str_like .=" ".$key." LIKE '%".$this->jCfg['search']['keyword']."%' ";			
+					$i++;
+				}
+			}
+			$str_like .= " ) ";
+			$this->db->where($str_like);
+		}
+
+		if( trim($this->jCfg['search']['colum'])!="" && trim($this->jCfg['search']['keyword']) != "" ){
+			$this->db->like($this->jCfg['search']['colum'],$this->jCfg['search']['keyword']);
+		}
+
+		$this->db->group_by("iapi_detail_section.ds_item_name");
+
+		
+		if($count==FALSE){
+			if( isset($p['offset']) && isset($p['limit']) ){
+				$p['offset'] = empty($p['offset'])?0:$p['offset'];
+				$this->db->limit($p['limit'],$p['offset']);
+			}
+		}
+
+		if(trim($this->jCfg['search']['order_by'])!=""){
+			$this->db->order_by($this->jCfg['search']['order_by'],$this->jCfg['search']['order_dir']);
+			$this->db->order_by("uj_test_start_date","DESC");
+		}
+		
+		$qry = $this->db->get();
+		if($count==FALSE){
+			$total = $this->tabulasi($p,TRUE);
+			return array(
+					"data"	=> $qry->result(),
+					"total" => $total
+				);
+		}else{
+			return $qry->num_rows();
+		}
+	}
+
+	function wilayah($p=array(),$count=FALSE){
+		
+		$total = 0;
+		$this->db->from('iapi_ujian');
+
+		$this->db->select("uj_corresponden_city as kota, count(uj_id) as jumlah");
+		
+		if(isset($p['ujian_type']) && trim($p['ujian_type'])!="" && trim($p['ujian_type'])!=0){
+			$this->db->where("uj_test_series_id",$p['ujian_type']);
+		}
+
+		if(isset($this->jCfg['search']['is_cur_periode']) && trim($this->jCfg['search']['is_cur_periode'])==1){
+			$this->db->where("uj_test_start_date >=",get_current_periode());
+		}
+
+		if(isset($p['min_1_periode'])){
+			$periode_min_1 = mDate(get_current_periode(),"-3 month");
+			$this->db->where("( uj_test_start_date >= '".$periode_min_1." 01:00:00' AND uj_test_start_date < '".get_current_periode()." 23:59:00' )");
+		}
+
+		$this->db->where('uj_record_type','test'); 
+
+		/*if(trim($this->jCfg['search']['is_approve'])==1){
+			$this->db->where("uj_is_approve",1);
+		}elseif(trim($this->jCfg['search']['is_approve'])==0){
+			$this->db->where("uj_is_approve",0);
+		}*/
+
+		/*if(trim($this->jCfg['search']['status'])=="LULUS"){
+			$this->db->where("uj_total_nilai_final >",75);
+		}elseif(trim($this->jCfg['search']['status'])=="TIDAK"){
+			$this->db->where("uj_total_nilai_final <=",75);
+		}*/
+		
+		/* where or like conditions */
+		if( trim($this->jCfg['search']['date_start'])!="" && trim($this->jCfg['search']['date_end']) != "" ){
+			$this->db->where("( uj_test_start_date >= '".$this->jCfg['search']['date_start']." 01:00:00' AND uj_test_start_date <= '".$this->jCfg['search']['date_end']." 23:59:00' )");
+		}
+
+		// dont modified....
+		if( trim($this->jCfg['search']['colum'])=="" && trim($this->jCfg['search']['keyword']) != "" ){
+			$str_like = "( ";
+			$i=0;
+			foreach ($p['param'] as $key => $value) {
+				if($key != ""){
+					$str_like .= $i!=0?"OR":"";
+					$str_like .=" ".$key." LIKE '%".$this->jCfg['search']['keyword']."%' ";			
+					$i++;
+				}
+			}
+			$str_like .= " ) ";
+			$this->db->where($str_like);
+		}
+
+		if( trim($this->jCfg['search']['colum'])!="" && trim($this->jCfg['search']['keyword']) != "" ){
+			$this->db->like($this->jCfg['search']['colum'],$this->jCfg['search']['keyword']);
+		}
+
+
+		$this->db->where( 'uj_record_type !=','old' );
+		
+		if($count==FALSE){
+			if( isset($p['offset']) && isset($p['limit']) ){
+				$p['offset'] = empty($p['offset'])?0:$p['offset'];
+				$this->db->limit($p['limit'],$p['offset']);
+			}
+		}
+
+		if(trim($this->jCfg['search']['order_by'])!=""){
+			$this->db->order_by($this->jCfg['search']['order_by'],$this->jCfg['search']['order_dir']);
+			$this->db->order_by("uj_test_start_date","DESC");
+		}
+		
+		$this->db->group_by("uj_corresponden_city");
+
+		$qry = $this->db->get();
+		if($count==FALSE){
+			$total = $this->wilayah($p,TRUE);
+			return array(
+					"data"	=> $qry->result(),
+					"total" => $total
+				);
+		}else{
+			return $qry->num_rows();
+		}
+	}
+ 	
+ 	function seat_reg($p=array(),$count=FALSE){
+		
+		$total = 0;
+		$this->db->from('iapi_ujian');
+
+		$this->db->select("uj_test_center_id,count(uj_id) as jumlah");
+		
+		if(isset($p['ujian_type']) && trim($p['ujian_type'])!="" && trim($p['ujian_type'])!=0){
+			$this->db->where("uj_test_series_id",$p['ujian_type']);
+		}
+
+		if(isset($this->jCfg['search']['is_cur_periode']) && trim($this->jCfg['search']['is_cur_periode'])==1){
+			$this->db->where("uj_test_start_date >=",get_current_periode());
+		}
+
+		if(isset($p['min_1_periode'])){
+			$periode_min_1 = mDate(get_current_periode(),"-3 month");
+			$this->db->where("( uj_test_start_date >= '".$periode_min_1." 01:00:00' AND uj_test_start_date < '".get_current_periode()." 23:59:00' )");
+		}
+
+		/*if(trim($this->jCfg['search']['is_approve'])==1){
+			$this->db->where("uj_is_approve",1);
+		}elseif(trim($this->jCfg['search']['is_approve'])==0){
+			$this->db->where("uj_is_approve",0);
+		}*/
+
+		/*if(trim($this->jCfg['search']['status'])=="LULUS"){
+			$this->db->where("uj_total_nilai_final >",75);
+		}elseif(trim($this->jCfg['search']['status'])=="TIDAK"){
+			$this->db->where("uj_total_nilai_final <=",75);
+		}*/
+		
+		$this->db->where( 'uj_record_type !=','old' );
+		/* where or like conditions */
+		if( trim($this->jCfg['search']['date_start'])!="" && trim($this->jCfg['search']['date_end']) != "" ){
+			$this->db->where("( uj_test_start_date >= '".$this->jCfg['search']['date_start']." 01:00:00' AND uj_test_start_date <= '".$this->jCfg['search']['date_end']." 23:59:00' )");
+		}
+
+		// dont modified....
+		if( trim($this->jCfg['search']['colum'])=="" && trim($this->jCfg['search']['keyword']) != "" ){
+			$str_like = "( ";
+			$i=0;
+			foreach ($p['param'] as $key => $value) {
+				if($key != ""){
+					$str_like .= $i!=0?"OR":"";
+					$str_like .=" ".$key." LIKE '%".$this->jCfg['search']['keyword']."%' ";			
+					$i++;
+				}
+			}
+			$str_like .= " ) ";
+			$this->db->where($str_like);
+		}
+
+		if( trim($this->jCfg['search']['colum'])!="" && trim($this->jCfg['search']['keyword']) != "" ){
+			$this->db->like($this->jCfg['search']['colum'],$this->jCfg['search']['keyword']);
+		}
+
+
+		
+		if($count==FALSE){
+			if( isset($p['offset']) && isset($p['limit']) ){
+				$p['offset'] = empty($p['offset'])?0:$p['offset'];
+				$this->db->limit($p['limit'],$p['offset']);
+			}
+		}
+
+		if(trim($this->jCfg['search']['order_by'])!=""){
+			$this->db->order_by($this->jCfg['search']['order_by'],$this->jCfg['search']['order_dir']);
+			$this->db->order_by("uj_test_start_date","DESC");
+		}
+		
+		$this->db->group_by("uj_test_center_id");		
+
+		$qry = $this->db->get();
+		if($count==FALSE){
+			$total = $this->seat_reg($p,TRUE);
+			return array(
+					"data"	=> $qry->result(),
+					"total" => $total
+				);
+		}else{
+			return $qry->num_rows();
+		}
+	}
+
+	function test(){
+		$a = 2999-00-0-23;
+	}
+ 
+	function kategory_peserta($p=array(),$count=FALSE){
+		
+		$total = 0;
+		$this->db->from('iapi_ujian');
+
+		$this->db->select("uj_corresponden_city as kota, count(uj_id) as jumlah");
+		
+		if(isset($p['ujian_type']) && trim($p['ujian_type'])!="" && trim($p['ujian_type'])!=0){
+			$this->db->where("uj_test_series_id",$p['ujian_type']);
+		}
+
+		if(isset($this->jCfg['search']['is_cur_periode']) && trim($this->jCfg['search']['is_cur_periode'])==1){
+			$this->db->where("uj_test_start_date >=",get_current_periode());
+		}
+
+		if(isset($p['min_1_periode'])){
+			$periode_min_1 = mDate(get_current_periode(),"-3 month");
+			$this->db->where("( uj_test_start_date >= '".$periode_min_1." 01:00:00' AND uj_test_start_date < '".get_current_periode()." 23:59:00' )");
+		}
+
+		if(isset($p['record_type'])){
+			$this->db->where( 'uj_record_type',trim($p['record_type']) ); 
+		}	
+
+		$this->db->where( 'uj_record_type !=','old' );
+
+		if(isset($p['res_city'])){
+			$this->db->where( 'uj_corresponden_city',trim($p['res_city']) ); 
+		}	
+
+		/* where or like conditions */
+		if( trim($this->jCfg['search']['date_start'])!="" && trim($this->jCfg['search']['date_end']) != "" ){
+			$this->db->where("( uj_test_start_date >= '".$this->jCfg['search']['date_start']." 01:00:00' AND uj_test_start_date <= '".$this->jCfg['search']['date_end']." 23:59:00' )");
+		}
+
+		// dont modified....
+		if( trim($this->jCfg['search']['colum'])=="" && trim($this->jCfg['search']['keyword']) != "" ){
+			$str_like = "( ";
+			$i=0;
+			foreach ($p['param'] as $key => $value) {
+				if($key != ""){
+					$str_like .= $i!=0?"OR":"";
+					$str_like .=" ".$key." LIKE '%".$this->jCfg['search']['keyword']."%' ";			
+					$i++;
+				}
+			}
+			$str_like .= " ) ";
+			$this->db->where($str_like);
+		}
+
+		if( trim($this->jCfg['search']['colum'])!="" && trim($this->jCfg['search']['keyword']) != "" ){
+			$this->db->like($this->jCfg['search']['colum'],$this->jCfg['search']['keyword']);
+		}
+
+
+		
+		if($count==FALSE){
+			if( isset($p['offset']) && isset($p['limit']) ){
+				$p['offset'] = empty($p['offset'])?0:$p['offset'];
+				$this->db->limit($p['limit'],$p['offset']);
+			}
+		}
+
+		if(trim($this->jCfg['search']['order_by'])!=""){
+			$this->db->order_by($this->jCfg['search']['order_by'],$this->jCfg['search']['order_dir']);
+			$this->db->order_by("uj_test_start_date","DESC");
+		}
+		
+		$this->db->group_by("uj_corresponden_city");
+
+		$qry = $this->db->get();
+		if($count==FALSE){
+			$total = $this->kategory_peserta($p,TRUE);
+			return array(
+					"data"	=> $qry->result(),
+					"total" => $total
+				);
+		}else{
+			return $qry->num_rows();
+		}
+	}
+
+	function kehadiran($p=array(),$count=FALSE){
+		
+		$total = 0;
+		$this->db->from('iapi_ujian');
+
+		$this->db->select("uj_test_series_id as ujian, count(uj_id) as jumlah");
+		
+		if(isset($p['ujian_type']) && trim($p['ujian_type'])!="" && trim($p['ujian_type'])!=0){
+			$this->db->where("uj_test_series_id",$p['ujian_type']);
+		}
+
+		if(isset($this->jCfg['search']['is_cur_periode']) && trim($this->jCfg['search']['is_cur_periode'])==1){
+			$this->db->where("uj_test_start_date >=",get_current_periode());
+		}
+
+		if(isset($p['min_1_periode'])){
+			$periode_min_1 = mDate(get_current_periode(),"-3 month");
+			$this->db->where("( uj_test_start_date >= '".$periode_min_1." 01:00:00' AND uj_test_start_date < '".get_current_periode()." 23:59:00' )");
+		}
+
+		if(isset($p['record_type'])){
+			$this->db->where( 'uj_record_type',trim($p['record_type']) ); 
+		}	
+
+		$this->db->where( 'uj_record_type !=','old' );
+
+		if(isset($p['res_city'])){
+			$this->db->where( 'uj_corresponden_city',trim($p['res_city']) ); 
+		}	
+
+		/* where or like conditions */
+		if( trim($this->jCfg['search']['date_start'])!="" && trim($this->jCfg['search']['date_end']) != "" ){
+			$this->db->where("( uj_test_start_date >= '".$this->jCfg['search']['date_start']." 01:00:00' AND uj_test_start_date <= '".$this->jCfg['search']['date_end']." 23:59:00' )");
+		}
+
+		// dont modified....
+		if( trim($this->jCfg['search']['colum'])=="" && trim($this->jCfg['search']['keyword']) != "" ){
+			$str_like = "( ";
+			$i=0;
+			foreach ($p['param'] as $key => $value) {
+				if($key != ""){
+					$str_like .= $i!=0?"OR":"";
+					$str_like .=" ".$key." LIKE '%".$this->jCfg['search']['keyword']."%' ";			
+					$i++;
+				}
+			}
+			$str_like .= " ) ";
+			$this->db->where($str_like);
+		}
+
+		if( trim($this->jCfg['search']['colum'])!="" && trim($this->jCfg['search']['keyword']) != "" ){
+			$this->db->like($this->jCfg['search']['colum'],$this->jCfg['search']['keyword']);
+		}
+
+
+		
+		if($count==FALSE){
+			if( isset($p['offset']) && isset($p['limit']) ){
+				$p['offset'] = empty($p['offset'])?0:$p['offset'];
+				$this->db->limit($p['limit'],$p['offset']);
+			}
+		}
+
+		if(trim($this->jCfg['search']['order_by'])!=""){
+			$this->db->order_by($this->jCfg['search']['order_by'],$this->jCfg['search']['order_dir']);
+			$this->db->order_by("uj_test_start_date","DESC");
+		}
+		
+		$this->db->group_by("uj_test_series_id");
+
+		$qry = $this->db->get();
+		if($count==FALSE){
+			$total = $this->kehadiran($p,TRUE);
+			return array(
+					"data"	=> $qry->result(),
+					"total" => $total
+				);
+		}else{
+			return $qry->num_rows();
+		}
+	}
+
+
+	function gender($p=array(),$count=FALSE){
+		
+		$total = 0;
+		$this->db->from('iapi_ujian');
+
+		$this->db->select("uj_custome_candidate_data_field_gender as gender, count(uj_id) as jumlah");
+		
+		if(isset($p['ujian_type']) && trim($p['ujian_type'])!="" && trim($p['ujian_type'])!=0){
+			$this->db->where("uj_test_series_id",$p['ujian_type']);
+		}
+
+		if(isset($p['record_type']) && trim($p['record_type'])!=""){
+			$this->db->where("uj_record_type",$p['record_type']);
+		}
+
+		if(isset($this->jCfg['search']['is_cur_periode']) && trim($this->jCfg['search']['is_cur_periode'])==1){
+			$this->db->where("uj_test_start_date >=",get_current_periode());
+		}
+
+		if(isset($p['min_1_periode'])){
+			$periode_min_1 = mDate(get_current_periode(),"-3 month");
+			$this->db->where("( uj_test_start_date >= '".$periode_min_1." 01:00:00' AND uj_test_start_date < '".get_current_periode()." 23:59:00' )");
+		}
+		$this->db->where('uj_record_type !=','old');
+			
+		/*
+		if(trim($this->jCfg['search']['is_approve'])==1){
+			$this->db->where("uj_is_approve",1);
+		}elseif(trim($this->jCfg['search']['is_approve'])==0){
+			$this->db->where("uj_is_approve",0);
+		}
+
+		if(trim($this->jCfg['search']['status'])=="LULUS"){
+			$this->db->where("uj_total_nilai_final >",75);
+		}elseif(trim($this->jCfg['search']['status'])=="TIDAK"){
+			$this->db->where("uj_total_nilai_final <=",75);
+		}
+		*/
+		/* where or like conditions */
+		if( trim($this->jCfg['search']['date_start'])!="" && trim($this->jCfg['search']['date_end']) != "" ){
+			$this->db->where("( uj_test_start_date >= '".$this->jCfg['search']['date_start']." 01:00:00' AND uj_test_start_date <= '".$this->jCfg['search']['date_end']." 23:59:00' )");
+		}
+
+		// dont modified....
+		if( trim($this->jCfg['search']['colum'])=="" && trim($this->jCfg['search']['keyword']) != "" ){
+			$str_like = "( ";
+			$i=0;
+			foreach ($p['param'] as $key => $value) {
+				if($key != ""){
+					$str_like .= $i!=0?"OR":"";
+					$str_like .=" ".$key." LIKE '%".$this->jCfg['search']['keyword']."%' ";			
+					$i++;
+				}
+			}
+			$str_like .= " ) ";
+			$this->db->where($str_like);
+		}
+
+		if( trim($this->jCfg['search']['colum'])!="" && trim($this->jCfg['search']['keyword']) != "" ){
+			$this->db->like($this->jCfg['search']['colum'],$this->jCfg['search']['keyword']);
+		}
+
+
+		
+		if($count==FALSE){
+			if( isset($p['offset']) && isset($p['limit']) ){
+				$p['offset'] = empty($p['offset'])?0:$p['offset'];
+				$this->db->limit($p['limit'],$p['offset']);
+			}
+		}
+
+		if(trim($this->jCfg['search']['order_by'])!=""){
+			$this->db->order_by($this->jCfg['search']['order_by'],$this->jCfg['search']['order_dir']);
+			$this->db->order_by("uj_test_start_date","DESC");
+		}
+		
+		$this->db->group_by("uj_custome_candidate_data_field_gender");
+
+		$qry = $this->db->get();
+		if($count==FALSE){
+			$total = $this->gender($p,TRUE);
+			return array(
+					"data"	=> $qry->result(),
+					"total" => $total
+				);
+		}else{
+			return $qry->num_rows();
+		}
+	}
+
+	function jumlah_essay($par=array()){ 
+		
+		$this->db->select(" iapi_ujian.uj_test_series_id,count(iapi_ujian.uj_id) as jumlah ");
+		$this->db->join("iapi_detail_essay","iapi_detail_essay.de_reg_number = iapi_ujian.uj_reg_number");
+
+		if( isset($par['ujian_type']) && trim($par['ujian_type'])!="" ){
+			$this->db->where("iapi_ujian.uj_test_series_id",$par['ujian_type']);
+		}
+		$this->db->group_by('iapi_ujian.uj_test_series_id');
+		
+		$periode_plus_1 = mDate(get_current_periode(),"+3 month");
+		$this->db->where("( uj_test_start_date >= '".get_current_periode()." 01:00:00' AND uj_test_start_date < '".$periode_plus_1." 23:59:00' )");
+
+
+		return $this->db->get('iapi_ujian')->row();
+	}
+
+	function jumlah_peserta($par=array()){ 
+		
+		$this->db->select(" count(uj_id) as jumlah ");
+
+		if( isset($par['ujian_type']) && trim($par['ujian_type'])!="" ){
+			$this->db->where("iapi_ujian.uj_test_series_id",$par['ujian_type']);
+		}
+		$this->db->group_by('iapi_ujian.uj_test_series_id');
+		
+		$periode_plus_1 = mDate(get_current_periode(),"+3 month");
+		$this->db->where("( uj_test_start_date >= '".get_current_periode()." 01:00:00' AND uj_test_start_date < '".$periode_plus_1." 23:59:00' )");
+
+		$m = $this->db->get('iapi_ujian')->row();
+
+		return isset($m->jumlah)?$m->jumlah:0;
+	}
+}
